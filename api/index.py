@@ -1,7 +1,9 @@
-import os, io, re, json, base64, ipaddress, urllib.parse
+import os, io, re, json, base64, ipaddress, urllib.parse, hashlib, hmac
 import qrcode
 from PIL import Image, UnidentifiedImageError
 from flask import Flask, request, jsonify, send_from_directory, Response
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import pyshorteners
 
 # ── Upstash Redis (Vercel KV) — graceful fallback ─────────────────────────────
@@ -23,11 +25,22 @@ PUBLIC_DIR = os.path.join(BASE_DIR, "public")
 
 app = Flask(__name__, static_folder=PUBLIC_DIR, static_url_path="")
 
+# ── Rate limiting ─────────────────────────────────────────────────────────────
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://",
+)
+
 # ── Security constants ────────────────────────────────────────────────────────
-MAX_DATA_LEN   = 2000
-MAX_LOGO_BYTES = 3 * 1024 * 1024
-MAGIC_BYTES    = {b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"RIFF"}
-BLOCKED_HOSTS  = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+MAX_DATA_LEN    = 2000
+MAX_LOGO_BYTES  = 3 * 1024 * 1024
+MAGIC_BYTES     = {b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"RIFF"}
+BLOCKED_HOSTS   = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+
+# ── History admin token (set HISTORY_TOKEN env var in Vercel) ─────────────────
+HISTORY_TOKEN = os.environ.get("HISTORY_TOKEN", "")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -66,6 +79,19 @@ def _hex_to_rgb(h: str) -> tuple:
 
 def _clamp(val, lo, hi):
     return max(lo, min(val, hi))
+
+
+def _verify_token(req: request) -> bool:
+    """Constant-time token comparison to prevent timing attacks."""
+    if not HISTORY_TOKEN:
+        return False
+    provided = req.headers.get("X-History-Token", "").strip()
+    if not provided:
+        return False
+    return hmac.compare_digest(
+        hashlib.sha256(provided.encode()).digest(),
+        hashlib.sha256(HISTORY_TOKEN.encode()).digest(),
+    )
 
 
 # ── KV helpers ────────────────────────────────────────────────────────────────
@@ -138,11 +164,12 @@ def make_qr_base64(data, logo_bytes=None, size=10, border=2,
 @app.after_request
 def sec_headers(resp: Response) -> Response:
     resp.headers.update({
-        "X-Content-Type-Options": "nosniff",
-        "X-Frame-Options":        "DENY",
-        "X-XSS-Protection":       "1; mode=block",
-        "Referrer-Policy":        "strict-origin-when-cross-origin",
-        "Permissions-Policy":     "camera=(), microphone=(), geolocation=()",
+        "X-Content-Type-Options":  "nosniff",
+        "X-Frame-Options":         "DENY",
+        "X-XSS-Protection":        "1; mode=block",
+        "Referrer-Policy":         "strict-origin-when-cross-origin",
+        "Permissions-Policy":      "camera=(), microphone=(), geolocation=()",
+        "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
         "Content-Security-Policy": (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
@@ -154,6 +181,8 @@ def sec_headers(resp: Response) -> Response:
         ),
     })
     resp.headers.pop("Server", None)
+    # Block all CORS — only same-origin requests allowed
+    resp.headers.pop("Access-Control-Allow-Origin", None)
     return resp
 
 
@@ -169,6 +198,7 @@ def favicon():
 
 
 @app.route("/api/generate-qr", methods=["POST"])
+@limiter.limit("20 per minute; 100 per hour")
 def api_generate_qr():
     data = (request.form.get("data") or "").strip()
     if not data:
@@ -204,6 +234,7 @@ def api_generate_qr():
 
 
 @app.route("/api/shorten-url", methods=["POST"])
+@limiter.limit("10 per minute; 50 per hour")
 def api_shorten_url():
     body = request.get_json(silent=True) or {}
     url  = (body.get("url") or "").strip()
@@ -229,13 +260,21 @@ def api_shorten_url():
         return jsonify({"error": "No se pudo acortar la URL. Intenta de nuevo."}), 500
 
 
+# ── History — protected by token ──────────────────────────────────────────────
+
 @app.route("/api/history", methods=["GET"])
+@limiter.limit("30 per minute")
 def api_history():
+    if not _verify_token(request):
+        return jsonify({"error": "No autorizado."}), 401
     return jsonify({"history": kv_get_all(), "kv_available": KV_AVAILABLE})
 
 
 @app.route("/api/history", methods=["DELETE"])
+@limiter.limit("5 per minute")
 def api_clear_history():
+    if not _verify_token(request):
+        return jsonify({"error": "No autorizado."}), 401
     if not KV_AVAILABLE:
         return jsonify({"error": "KV no disponible."}), 503
     try:
@@ -245,9 +284,15 @@ def api_clear_history():
         return jsonify({"error": "No se pudo limpiar."}), 500
 
 
+# ── Rate limit error handler ──────────────────────────────────────────────────
+
+@app.errorhandler(429)
+def rate_limit_exceeded(_):
+    return jsonify({"error": "Demasiadas solicitudes. Intenta más tarde."}), 429
+
 @app.errorhandler(404)
-def not_found(_):         return jsonify({"error": "Ruta no encontrada."}),   404
+def not_found(_):          return jsonify({"error": "Ruta no encontrada."}),   404
 @app.errorhandler(405)
 def method_not_allowed(_): return jsonify({"error": "Método no permitido."}), 405
 @app.errorhandler(500)
-def internal_error(_):    return jsonify({"error": "Error interno."}),        500
+def internal_error(_):     return jsonify({"error": "Error interno."}),        500
