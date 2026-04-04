@@ -145,11 +145,11 @@ def sec_headers(resp: Response) -> Response:
         "Permissions-Policy":     "camera=(), microphone=(), geolocation=()",
         "Content-Security-Policy": (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src https://fonts.gstatic.com; "
             "img-src 'self' data:; "
-            "connect-src 'self'; "
+            "connect-src 'self' https://vitals.vercel-insights.com; "
             "frame-ancestors 'none';"
         ),
     })
