@@ -19,10 +19,10 @@
       --card:    rgba(255,255,255,.04);
       --border:  rgba(255,255,255,.08);
       --bh:      rgba(99,102,241,.45);
-      --acc1:    #6366f1;   /* indigo — nueva identidad Qrea-fy */
+      --acc1:    #6366f1;
       --acc1h:   #4f46e5;
-      --acc2:    #06b6d4;   /* cyan */
-      --acc3:    #f97316;   /* naranja — acento extra */
+      --acc2:    #06b6d4;
+      --acc3:    #f97316;
       --green:   #10b981;
       --red:     #f43f5e;
       --text:    #f0f0ff;
@@ -51,7 +51,6 @@
       --shadow:  0 20px 50px rgba(80,80,200,.12);
     }
 
-    /* ── Reset ─────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
     body {
@@ -61,7 +60,6 @@
       transition: background .3s, color .3s;
     }
 
-    /* ── Ambient (dark only) ────────────────── */
     [data-theme="dark"] body::before {
       content: '';
       position: fixed; inset: 0; pointer-events: none; z-index: 0;
@@ -79,7 +77,6 @@
       background-size: 52px 52px;
     }
 
-    /* ── Header ─────────────────────────────── */
     header {
       position: sticky; top: 0; z-index: 100;
       height: var(--hh);
@@ -100,7 +97,6 @@
       text-decoration: none; color: inherit;
     }
     .logo-ico { width: 26px; height: 26px; flex-shrink: 0; }
-    /* Qrea-fy wordmark colors */
     .logo-q  { color: var(--acc1); }
     .logo-fy { color: var(--acc2); }
     .logo-dash { color: var(--acc3); opacity: .8; }
@@ -127,7 +123,6 @@
     }
     .mode-btn:hover { border-color: var(--acc1); color: var(--acc1); }
 
-    /* ── Main ───────────────────────────────── */
     main {
       position: relative; z-index: 1;
       max-width: 1100px; margin: 0 auto;
@@ -135,7 +130,6 @@
     }
     @media (min-width: 640px) { main { padding: 2.5rem 1.5rem 5rem; } }
 
-    /* ── Hero ───────────────────────────────── */
     .hero { text-align: center; margin-bottom: 2.2rem; padding: 0 .5rem; }
     .badge {
       display: inline-flex; align-items: center; gap: .4rem;
@@ -158,16 +152,13 @@
     }
     .hero p { font-size: clamp(.85rem, 2.5vw, .98rem); color: var(--muted); max-width: 440px; margin: 0 auto; line-height: 1.7; }
 
-    /* ── Panels ─────────────────────────────── */
     .panel { display: none; }
     .panel.on { display: block; }
 
-    /* ── Grid ───────────────────────────────── */
     .g2 { display: grid; grid-template-columns: 1fr; gap: 1rem; }
     @media (min-width: 700px) { .g2 { grid-template-columns: 1fr 1fr; align-items: start; } }
     .col-stack { display: flex; flex-direction: column; gap: 1rem; }
 
-    /* ── Card ───────────────────────────────── */
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -187,7 +178,6 @@
     }
     .card-lbl::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
-    /* ── Fields ─────────────────────────────── */
     .f { margin-bottom: .85rem; }
     label {
       display: block; font-size: .68rem; font-family: var(--mono);
@@ -214,7 +204,6 @@
     .row { display: flex; gap: .6rem; }
     .row .f { flex: 1; min-width: 0; }
 
-    /* ── Drop zone ──────────────────────────── */
     .drop {
       border: 2px dashed var(--border); border-radius: 10px;
       padding: 1.3rem 1rem; text-align: center; cursor: pointer;
@@ -227,7 +216,6 @@
     .drop-txt strong { color: var(--acc2); }
     #logo-prev { width: 56px; height: 56px; object-fit: contain; border-radius: 8px; border: 1px solid var(--border); margin-top: .5rem; display: none; }
 
-    /* ── Buttons ────────────────────────────── */
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
       width: 100%; padding: .8rem 1.3rem; border-radius: 9px; border: none;
@@ -253,7 +241,6 @@
     }
     @keyframes rot { to { transform: rotate(360deg); } }
 
-    /* ── QR preview ─────────────────────────── */
     .qr-area {
       display: flex; flex-direction: column; align-items: center;
       gap: 1rem; min-height: 210px; justify-content: center;
@@ -270,7 +257,6 @@
     .qr-acts { display: none; flex-direction: column; gap: .45rem; width: 100%; }
     @media (min-width: 700px) { .sticky-col { position: sticky; top: calc(var(--hh) + 1rem); } }
 
-    /* ── URL shortener ──────────────────────── */
     .url-bar { display: flex; gap: .5rem; margin-bottom: .75rem; flex-wrap: wrap; }
     .url-bar input { flex: 1; min-width: 180px; }
     .url-bar .btn  { flex-shrink: 0; width: auto; }
@@ -298,7 +284,6 @@
     .qr-url-btn   { border-color: var(--acc1); color: var(--acc1); }
     .qr-url-btn:hover { background: var(--acc1); color: #fff; }
 
-    /* ── History ────────────────────────────── */
     .hist-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .5rem; }
     .kv-badge {
       font-size: .6rem; font-family: var(--mono);
@@ -326,11 +311,17 @@
     .h-orig  { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
     .h-cp    { flex-shrink: 0; margin-left: auto; }
 
-    /* ── Errors ─────────────────────────────── */
     .err { color: var(--red); font-family: var(--mono); font-size: .72rem; margin-top: .38rem; display: none; }
     .err.on { display: block; }
 
-    /* ── Toast ──────────────────────────────── */
+    /* Rate limit warning */
+    .rate-warn {
+      font-size: .68rem; font-family: var(--mono); color: var(--acc3);
+      background: rgba(249,115,22,.07); border: 1px solid rgba(249,115,22,.2);
+      border-radius: 7px; padding: .5rem .75rem; margin-top: .5rem; display: none;
+    }
+    .rate-warn.on { display: block; }
+
     .toast {
       position: fixed; z-index: 9999;
       bottom: 1.4rem; right: 1rem; left: 1rem; max-width: 340px; margin: 0 auto;
@@ -349,7 +340,6 @@
     .toast.ok { border-color: var(--green); }
     .toast.er { border-color: var(--red); }
 
-    /* ── Stats bar ──────────────────────────── */
     .stats-bar {
       display: flex; gap: .5rem; flex-wrap: wrap;
       margin-bottom: .75rem;
@@ -365,7 +355,6 @@
 </head>
 <body>
 
-<!-- ══ HEADER ══════════════════════════════════════ -->
 <header>
   <a class="logo" href="/" aria-label="Qrea-fy inicio">
     <svg class="logo-ico" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -401,7 +390,6 @@
 
 <main>
 
-  <!-- ══ HERO ════════════════════════════════════ -->
   <div class="hero">
     <div class="badge">★ Herramienta de productividad</div>
     <h1>Crea QRs<br><span class="grd">sin límites</span></h1>
@@ -460,6 +448,7 @@
           <span class="spin" id="sp-qr" aria-hidden="true"></span>◈ Generar QR
         </button>
         <div class="err" id="qr-err" role="alert"></div>
+        <div class="rate-warn" id="qr-rate">⚠ Límite alcanzado. Espera un momento antes de generar otro QR.</div>
       </div>
 
       <div class="card sticky-col">
@@ -486,7 +475,6 @@
         <div class="card">
           <div class="card-lbl">Acortador de URLs</div>
 
-          <!-- Stats bar -->
           <div class="stats-bar" id="stats-bar" style="display:none;">
             <div class="stat-chip">Total: <span id="stat-total">0</span></div>
             <div class="stat-chip">Hoy: <span id="stat-today">0</span></div>
@@ -501,6 +489,7 @@
               </button>
             </div>
             <div class="err" id="url-err" role="alert"></div>
+            <div class="rate-warn" id="url-rate">⚠ Límite alcanzado. Espera un momento antes de acortar otra URL.</div>
           </div>
 
           <div class="res-box" id="url-res" aria-live="polite">
@@ -516,7 +505,6 @@
         </div>
       </div>
 
-      <!-- Historial -->
       <div class="card">
         <div class="card-lbl">
           Historial
@@ -537,7 +525,6 @@
 
 </main>
 
-<!-- Toast -->
 <div class="toast" id="toast" role="status" aria-live="polite">
   <span id="t-ico" aria-hidden="true"></span>
   <span id="t-msg"></span>
@@ -582,6 +569,8 @@ function toast(msg, type='ok') {
 /* ══ ERRORS ═════════════════════════════════════ */
 function showErr(id, msg) { const e=document.getElementById(id); e.textContent=msg; e.classList.add('on'); }
 function clrErr(id)       { const e=document.getElementById(id); e.textContent=''; e.classList.remove('on'); }
+function showRate(id)     { document.getElementById(id).classList.add('on'); }
+function hideRate(id)     { document.getElementById(id).classList.remove('on'); }
 
 /* ══ LOGO ═══════════════════════════════════════ */
 function onLogo(inp) {
@@ -610,7 +599,7 @@ dz.addEventListener('drop', e=>{
 /* ══ QR GENERATOR ═══════════════════════════════ */
 let lastQR = null;
 async function genQR() {
-  clrErr('qr-err');
+  clrErr('qr-err'); hideRate('qr-rate');
   const data = document.getElementById('qr-data').value.trim();
   if (!data) { showErr('qr-err','⚠ Ingresa una URL o texto.'); return; }
   if (data.length > 2000) { showErr('qr-err','⚠ Máx. 2000 caracteres.'); return; }
@@ -630,6 +619,7 @@ async function genQR() {
 
   try {
     const res=await fetch('/api/generate-qr',{method:'POST',body:fd});
+    if(res.status===429){showRate('qr-rate');return;}
     const json=await res.json();
     if(json.error){showErr('qr-err','✕ '+json.error);return;}
     lastQR='data:image/png;base64,'+json.qr;
@@ -658,7 +648,7 @@ async function cpQR() {
 
 /* ══ URL SHORTENER ══════════════════════════════ */
 async function shortenURL() {
-  clrErr('url-err');
+  clrErr('url-err'); hideRate('url-rate');
   const url=document.getElementById('long-url').value.trim();
   if(!url){showErr('url-err','⚠ Ingresa una URL.');return;}
 
@@ -670,6 +660,7 @@ async function shortenURL() {
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({url})
     });
+    if(res.status===429){showRate('url-rate');return;}
     const json=await res.json();
     if(json.error){showErr('url-err','✕ '+json.error);return;}
 
@@ -683,10 +674,22 @@ async function shortenURL() {
   finally { btn.disabled=false; sp.style.display='none'; }
 }
 
+/* ══ HISTORY TOKEN ══════════════════════════════ */
+// Inyecta window.__HT__ desde el servidor si quieres habilitar historial.
+// En Vercel: Environment Variable HISTORY_TOKEN → el valor se inyecta aquí.
+const _HT = (typeof window.__HT__ !== 'undefined') ? window.__HT__ : '';
+const _HH  = _HT ? {'X-History-Token': _HT} : {};
+
 /* ══ HISTORY ════════════════════════════════════ */
 async function loadHistory() {
   try {
-    const res=await fetch('/api/history');
+    const res=await fetch('/api/history',{headers:_HH});
+    if(res.status===401){
+      renderHist([]);
+      const e=document.getElementById('hist-empty');
+      if(e) e.textContent='—';
+      return;
+    }
     const json=await res.json();
     updateKvBadge(json.kv_available);
     renderHist(json.history||[]);
@@ -695,7 +698,8 @@ async function loadHistory() {
 
 async function clearHistory() {
   try {
-    const res=await fetch('/api/history',{method:'DELETE'});
+    const res=await fetch('/api/history',{method:'DELETE',headers:_HH});
+    if(res.status===401){toast('Acción no permitida','er');return;}
     const json=await res.json();
     if(json.error){ toast('Sin KV activo — historial es local','info'); return; }
     renderHist([]);
@@ -717,17 +721,16 @@ function renderHist(items) {
 
   if(!items.length){
     const li=document.createElement('li');
+    li.id='hist-empty';
     li.style.cssText='color:var(--muted);font-family:var(--mono);font-size:.73rem;text-align:center;padding:1.5rem 0;';
     li.textContent='Tus URLs acortadas aparecerán aquí';
     ul.appendChild(li);
     count.textContent=''; statsBar.style.display='none'; return;
   }
 
-  // Stats
   count.textContent=`${items.length} enlace${items.length!==1?'s':''}`;
   statsBar.style.display='flex';
   document.getElementById('stat-total').textContent=items.length;
-  // "today" — contamos por timestamp si existe, sino mostramos el total
   document.getElementById('stat-today').textContent=items.filter(h=>h.ts && Date.now()-h.ts<86400000).length || items.length;
 
   items.forEach(h=>{
