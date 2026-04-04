@@ -1,0 +1,12 @@
+{
+  "name": "qrforge",
+  "version": "1.0.0",
+  "description": "QR code generator and URL shortener",
+  "private": true,
+  "scripts": {
+    "postinstall": "echo 'Dependencies installed successfully'"
+  },
+  "dependencies": {
+    "@vercel/speed-insights": "^1.0.12"
+  }
+}

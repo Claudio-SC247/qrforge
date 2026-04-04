@@ -177,7 +177,7 @@
 
     /* ══════════════════════════════════════════
        PANELS & GRID
-    ══════════════════════════════════════════ */
+    ═══════════════════════════════════��══════ */
     .panel { display: none; }
     .panel.on { display: block; }
 
@@ -340,7 +340,7 @@
     .qr-url-btn { border-color: var(--acc1); color: var(--acc1); }
     .qr-url-btn:hover { background: var(--acc1); color: #fff; }
 
-    /* ══════════════════════════════════════════
+    /* ═════════════════════════════════════���════
        HISTORY
     ══════════════════════════════════════════ */
     .hist-header {
@@ -828,5 +828,12 @@ document.getElementById('qr-data').addEventListener('keydown', e=>{if(e.key==='E
 // Cargar historial al iniciar si el panel URL es visible
 loadHistory();
 </script>
+
+<!-- Vercel Speed Insights -->
+<script>
+  window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/speed-insights/script.js"></script>
+
 </body>
 </html>
