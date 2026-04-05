@@ -4,7 +4,7 @@ from PIL import Image, UnidentifiedImageError
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-import pyshorteners
+import requests
 
 # ── Upstash Redis (Vercel KV) — graceful fallback ─────────────────────────────
 try:
@@ -251,8 +251,17 @@ def api_shorten_url():
         return jsonify({"error": reason}), 400
 
     try:
-        short = pyshorteners.Shortener().tinyurl.short(url)
-        item  = {"short_url": short, "original_url": url}
+        resp = requests.get(
+            "https://tinyurl.com/api-create.php",
+            params={"url": url},
+            timeout=8,
+            headers={"User-Agent": "qreafy/1.0"},
+        )
+        resp.raise_for_status()
+        short = resp.text.strip()
+        if not short.startswith("https://tinyurl.com/"):
+            raise ValueError(f"Respuesta inesperada de TinyURL: {short[:80]}")
+        item = {"short_url": short, "original_url": url}
         kv_push(item)
         return jsonify({**item, "kv": KV_AVAILABLE})
     except Exception as e:
