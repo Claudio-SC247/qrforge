@@ -1,126 +1,143 @@
 """
-Qrea-fy — API backend
-Security hardening v2.0 (2026-04-20)
-
-Patches applied vs original:
-  [C-01] Rate limiter uses Redis, not memory (resets on cold start)
-  [C-02] HISTORY_TOKEN absence triggers runtime warning
-  [C-03] See requirements.txt — exact versions pinned
-  [H-01] Flask SECRET_KEY from env var
-  [M-02] User-Agent no longer impersonates Googlebot
-  [M-03] DNS rebinding blocked via socket re-resolution
-  [M-04] CSP tightened — unsafe-inline removed (JS/CSS now external)
-  [L-01] PIL decompression bomb protection
-  [L-02] Request-ID middleware for log correlation
+Qrea-fy — API backend v2.2
+Fix crítico: flask-limiter eliminado — era incompatible con Upstash REST URL (https://)
+causando crash en startup (exit code 1 en Render).
+Reemplazado por rate limiter propio usando upstash-redis directamente.
 """
 
-import os, io, re, json, base64, ipaddress, urllib.parse, hashlib, hmac, time, socket, uuid, warnings
+import os, io, re, json, hmac, time, hashlib, base64, logging
+import ipaddress, socket, urllib.parse, urllib.request, uuid, warnings
+
 import qrcode
 import requests
 from PIL import Image, UnidentifiedImageError
 from flask import Flask, request, jsonify, send_from_directory, Response, g
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 
-# ── PIL safety ─────────────────────────────────────────────────────────────────
-# Prevent decompression bomb attacks (malicious small-file → huge RAM expansion)
+# ── PIL safety ────────────────────────────────────────────────────────────────
 Image.MAX_IMAGE_PIXELS = 50_000_000
 
-# ── Upstash Redis — graceful fallback ──────────────────────────────────────────
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger("qreafy")
+
+# ── Upstash Redis — KV + Rate limiting ───────────────────────────────────────
 try:
     from upstash_redis import Redis
     _kv = Redis.from_env()
     _kv.ping()
     KV_AVAILABLE = True
-except Exception:
+    logger.info("Upstash Redis: conectado correctamente.")
+except Exception as exc:
     _kv = None
     KV_AVAILABLE = False
+    logger.warning("Upstash Redis no disponible: %s", exc)
 
 KV_KEY       = "qreafy:url_history"
 KV_MAX_ITEMS = 100
 
+# ── Rutas absolutas ───────────────────────────────────────────────────────────
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PUBLIC_DIR = os.path.join(BASE_DIR, "public")
 
+# ── Flask ─────────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder=PUBLIC_DIR, static_url_path="")
 
-# [H-01] Flask SECRET_KEY — required for sessions, CSRF tokens, signed cookies
 app.config["SECRET_KEY"] = (
     os.environ.get("FLASK_SECRET_KEY")
     or __import__("secrets").token_hex(32)
 )
+app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024  # 4 MB
 
-# Limit max request body to 4 MB — prevents large-JSON DoS before parsing
-app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024
-
-# [C-01] Rate limiter → Redis (not memory://, which resets on cold start)
-# Falls back to memory:// silently if Redis URL is absent (local dev)
-_redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or "memory://"
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=[],
-    storage_uri=_redis_url,
-)
-
-# [C-02] Warn if HISTORY_TOKEN is not configured
-HISTORY_TOKEN = os.environ.get("HISTORY_TOKEN", "")
-if not HISTORY_TOKEN:
-    warnings.warn(
-        "HISTORY_TOKEN env var is not set — DELETE /api/history will always reject. "
-        "Set HISTORY_TOKEN in your platform environment variables.",
-        RuntimeWarning,
-        stacklevel=1,
-    )
-
-# ── Constants ──────────────────────────────────────────────────────────────────
+# ── Constantes ────────────────────────────────────────────────────────────────
 MAX_DATA_LEN   = 2000
 MAX_LOGO_BYTES = 3 * 1024 * 1024
+MAX_JSON_BYTES = 10_000
 MAGIC_BYTES    = {b"\x89PNG", b"\xff\xd8\xff", b"GIF8", b"RIFF"}
 BLOCKED_HOSTS  = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
 
-# Known URL shortener services — their URLs must be resolved before re-shortening
-# (is.gd/TinyURL reject already-shortened URLs as anti-spam)
-_SHORTENER_DOMAINS = {
-    "goo.gl", "maps.app.goo.gl", "bit.ly", "bitly.com",
-    "tinyurl.com", "t.co", "ow.ly", "buff.ly", "ift.tt",
-    "dlvr.it", "fb.me", "youtu.be", "amzn.to", "short.link",
-    "rb.gy", "cutt.ly", "tiny.cc", "shorturl.at", "is.gd",
-    "v.gd", "lnkd.in", "wp.me", "adf.ly", "bc.vc",
-}
-
-# [M-02] Honest User-Agent — do NOT impersonate Googlebot (ToS violation)
 _REQ_HEADERS = {
-    "User-Agent": "qreafy/2.0 (+https://qrea-fy.vercel.app)",
-    "Accept": "text/html,application/xhtml+xml,*/*",
+    "User-Agent": "qreafy/2.2 (+https://github.com/Claudio-SC247/qrea-fy)",
+    "Accept":     "text/html,application/xhtml+xml,*/*",
 }
 
+_SHORTENER_DOMAINS = {
+    "goo.gl", "bit.ly", "tinyurl.com", "t.co", "ow.ly", "buff.ly",
+    "ift.tt", "dlvr.it", "fb.me", "youtu.be", "amzn.to", "short.link",
+    "rb.gy", "cutt.ly", "tiny.cc", "shorturl.at", "is.gd", "v.gd",
+    "lnkd.in", "wp.me", "bc.vc",
+}
 
-# ── Request-ID middleware [L-02] ───────────────────────────────────────────────
+HISTORY_TOKEN = os.environ.get("HISTORY_TOKEN", "")
+if not HISTORY_TOKEN:
+    warnings.warn(
+        "HISTORY_TOKEN no configurado — DELETE /api/history siempre rechazará.",
+        RuntimeWarning, stacklevel=1,
+    )
 
-@app.before_request
-def _set_request_id():
-    """Attach a short UUID to every request for log correlation."""
-    g.request_id = str(uuid.uuid4())[:8]
+# ── Rate limiting (sin flask-limiter — usa upstash-redis directamente) ────────
+# flask-limiter crasheaba porque esperaba redis:// pero Upstash usa https://
+RATE_LIMITS = {
+    "generate-qr": {"per_min": 20, "per_hour": 100},
+    "shorten-url": {"per_min": 10, "per_hour": 50},
+    "history-get": {"per_min": 30, "per_hour": 300},
+    "history-del": {"per_min": 5,  "per_hour": 10},
+}
 
+def _get_ip() -> str:
+    return (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.headers.get("CF-Connecting-IP", "")
+        or request.remote_addr
+        or "unknown"
+    )
 
-@app.after_request
-def _add_request_id_header(resp: Response) -> Response:
-    resp.headers["X-Request-ID"] = getattr(g, "request_id", "-")
+def _is_rate_limited(endpoint: str) -> bool:
+    """Sliding window con Upstash Redis. Fail-open si Redis no disponible."""
+    if not KV_AVAILABLE:
+        return False
+    limits = RATE_LIMITS.get(endpoint, {"per_min": 60, "per_hour": 600})
+    ip  = _get_ip()
+    now = int(time.time())
+    try:
+        for key, limit, ttl in [
+            (f"rl:{endpoint}:{ip}:{now // 60}",    limits["per_min"],  120),
+            (f"rl:{endpoint}:{ip}:{now // 3600}h", limits["per_hour"], 7200),
+        ]:
+            count = _kv.incr(key)
+            if count == 1:
+                _kv.expire(key, ttl)
+            if count > limit:
+                logger.warning("RATE_LIMIT | %s | ip=%s | count=%d", endpoint, ip[:12], count)
+                return True
+    except Exception as exc:
+        logger.warning("Rate limiter error: %s", exc)
+    return False
+
+def _rate_resp():
+    resp = jsonify({"error": "Demasiadas solicitudes. Espera un momento."})
+    resp.status_code = 429
+    resp.headers["Retry-After"] = "60"
     return resp
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# ── Request-ID middleware ─────────────────────────────────────────────────────
+
+@app.before_request
+def _set_request_id():
+    g.request_id = str(uuid.uuid4())[:8]
 
 def _log(level: str, msg: str, *args):
-    """Prefix every log line with the current request ID for easy filtering."""
     rid = getattr(g, "request_id", "-")
-    full = f"[{rid}] {msg}"
-    getattr(app.logger, level)(full, *args)
+    getattr(logger, level)(f"[{rid}] {msg}", *args)
 
 
-def _is_safe_url(url: str) -> tuple[bool, str]:
-    """Validate URL scheme, host, and IP class. Returns (ok, reason)."""
+# ── Helpers de seguridad ──────────────────────────────────────────────────────
+
+def _is_safe_url(url: str) -> tuple:
     try:
         parsed = urllib.parse.urlparse(url)
     except Exception:
@@ -137,37 +154,21 @@ def _is_safe_url(url: str) -> tuple[bool, str]:
         if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
             return False, "Host no permitido."
     except ValueError:
-        pass  # Not a bare IP — hostname will be resolved later
+        pass
     return True, ""
 
-
-def _resolve_host_ips(hostname: str) -> list[str]:
-    """Resolve hostname to IP list via socket (bypasses DNS cache for rebinding check)."""
-    try:
-        infos = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
-        return [info[4][0] for info in infos]
-    except Exception:
-        return []
-
-
 def _is_host_safe_after_resolution(url: str) -> bool:
-    """
-    [M-03] Anti DNS-rebinding: re-resolve hostname to IPs via socket and
-    reject if any resolved IP falls in a private/loopback/reserved range.
-    This is called immediately before making outbound HTTP requests.
-    """
+    """Anti DNS-rebinding: re-resuelve el hostname justo antes de cada request."""
     try:
         hostname = urllib.parse.urlparse(url).hostname or ""
         if not hostname:
             return False
-        ips = _resolve_host_ips(hostname)
-        if not ips:
-            return False  # Can't resolve → don't trust
-        for raw_ip in ips:
+        infos = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
+        for info in infos:
             try:
-                ip = ipaddress.ip_address(raw_ip)
+                ip = ipaddress.ip_address(info[4][0])
                 if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
-                    _log("warning", "DNS rebind blocked: %s → %s", hostname, raw_ip)
+                    _log("warning", "DNS rebind bloqueado: %s → %s", hostname, info[4][0])
                     return False
             except ValueError:
                 continue
@@ -175,72 +176,50 @@ def _is_host_safe_after_resolution(url: str) -> bool:
     except Exception:
         return False
 
-
 def _is_shortener_domain(url: str) -> bool:
-    """Return True if this URL belongs to a known shortener service."""
     try:
         host = urllib.parse.urlparse(url).hostname or ""
         return any(host == d or host.endswith("." + d) for d in _SHORTENER_DOMAINS)
     except Exception:
         return False
 
-
 def _resolve_url(url: str) -> str:
-    """
-    Follow redirect chain to get the final destination URL.
-    Performs DNS rebinding check before each outbound request.
-    Uses HEAD first, falls back to GET stream if needed.
-    Returns original URL on any failure.
-    """
+    """Sigue redirecciones para obtener la URL final (anti-cadena de acortadores)."""
     if not _is_host_safe_after_resolution(url):
-        _log("warning", "Pre-resolve DNS check failed for %s", url)
         return url
-
-    # HEAD attempt
     try:
         resp = requests.head(url, allow_redirects=True, timeout=6, headers=_REQ_HEADERS)
         final = resp.url
         if final and final != url and final.startswith(("http://", "https://")):
             if _is_host_safe_after_resolution(final):
-                _log("info", "Resolved HEAD %s → %s", url, final)
                 return final
     except Exception as e:
-        _log("warning", "HEAD resolve failed for %s: %s", url, e)
-
-    # GET stream fallback (some servers reject HEAD)
+        _log("debug", "HEAD resolve failed: %s", e)
     try:
-        resp = requests.get(url, allow_redirects=True, timeout=6, headers=_REQ_HEADERS, stream=True)
+        resp = requests.get(url, allow_redirects=True, timeout=6,
+                            headers=_REQ_HEADERS, stream=True)
         resp.close()
         final = resp.url
         if final and final != url and final.startswith(("http://", "https://")):
             if _is_host_safe_after_resolution(final):
-                _log("info", "Resolved GET %s → %s", url, final)
                 return final
     except Exception as e:
-        _log("warning", "GET resolve failed for %s: %s", url, e)
-
+        _log("debug", "GET resolve failed: %s", e)
     return url
 
-
 def _validate_image_magic(data: bytes) -> bool:
-    """Check first bytes match a known safe image format."""
     return any(data[:len(m)] == m for m in MAGIC_BYTES)
 
-
 def _hex_to_rgb(h: str) -> tuple:
-    """Convert #rrggbb hex string to (r, g, b) tuple. Returns black on invalid input."""
     h = h.strip().lstrip("#")
     if not re.fullmatch(r"[0-9a-fA-F]{6}", h):
         return (0, 0, 0)
-    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
 
-
-def _clamp(val, lo, hi):
-    return max(lo, min(val, hi))
-
+def _clamp(v, lo, hi):
+    return max(lo, min(v, hi))
 
 def _verify_token(req) -> bool:
-    """Constant-time comparison of HMAC-SHA256 hashes. Used only for DELETE."""
     if not HISTORY_TOKEN:
         return False
     provided = req.headers.get("X-History-Token", "").strip()
@@ -252,32 +231,42 @@ def _verify_token(req) -> bool:
     )
 
 
+# ── Multi-provider URL shortener ──────────────────────────────────────────────
+
+SHORTENER_PROVIDERS = [
+    {"name": "is.gd",
+     "url":  "https://is.gd/create.php?format=simple&url={e}",
+     "prefix": "https://is.gd/"},
+    {"name": "v.gd",
+     "url":  "https://v.gd/create.php?format=simple&url={e}",
+     "prefix": "https://v.gd/"},
+    {"name": "tinyurl",
+     "url":  "https://tinyurl.com/api-create.php?url={e}",
+     "prefix": "https://tinyurl.com/"},
+]
+
 def _shorten_with_fallback(url: str) -> str | None:
-    """Try is.gd → v.gd → TinyURL in order. Returns short URL or None."""
-    providers = [
-        {"api": "https://is.gd/create.php",         "params": {"format": "simple", "url": url}, "prefix": "https://is.gd/"},
-        {"api": "https://v.gd/create.php",           "params": {"format": "simple", "url": url}, "prefix": "https://v.gd/"},
-        {"api": "https://tinyurl.com/api-create.php","params": {"url": url},                     "prefix": "https://tinyurl.com/"},
-    ]
-    for p in providers:
+    encoded = urllib.parse.quote(url, safe="")
+    for p in SHORTENER_PROVIDERS:
+        api_url = p["url"].format(e=encoded)
         try:
-            resp = requests.get(
-                p["api"], params=p["params"], timeout=8,
-                headers={"User-Agent": "qreafy/2.0", "Accept": "text/plain"},
+            req = urllib.request.Request(
+                api_url,
+                headers={"User-Agent": "qreafy/2.2", "Accept": "text/plain"},
             )
-            if resp.status_code == 200:
-                short = resp.text.strip()
-                if short.startswith(p["prefix"]):
-                    return short
-                _log("warning", "Unexpected response from %s: %s", p["api"], short[:120])
-            else:
-                _log("warning", "HTTP %s from %s", resp.status_code, p["api"])
-        except Exception as e:
-            _log("warning", "Shortener %s failed: %s", p["api"], e)
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                if resp.status == 200:
+                    short = resp.read(512).decode("utf-8", errors="ignore").strip()
+                    if short.startswith(p["prefix"]):
+                        _log("info", "Acortado via %s: %s", p["name"], short)
+                        return short
+                    _log("warning", "Respuesta inesperada de %s: %.80s", p["name"], short)
+        except Exception as exc:
+            _log("warning", "Shortener %s error: %s", p["name"], exc)
     return None
 
 
-# ── Redis KV helpers ───────────────────────────────────────────────────────────
+# ── KV helpers ────────────────────────────────────────────────────────────────
 
 def kv_push(item: dict) -> None:
     if not KV_AVAILABLE:
@@ -286,9 +275,8 @@ def kv_push(item: dict) -> None:
         item.setdefault("ts", int(time.time() * 1000))
         _kv.lpush(KV_KEY, json.dumps(item, ensure_ascii=False))
         _kv.ltrim(KV_KEY, 0, KV_MAX_ITEMS - 1)
-    except Exception as e:
-        _log("warning", "KV push error: %s", e)
-
+    except Exception as exc:
+        _log("warning", "KV push: %s", exc)
 
 def kv_get_all() -> list:
     if not KV_AVAILABLE:
@@ -302,17 +290,15 @@ def kv_get_all() -> list:
             except Exception:
                 pass
         return out
-    except Exception as e:
-        _log("warning", "KV get error: %s", e)
+    except Exception as exc:
+        _log("warning", "KV get: %s", exc)
         return []
 
 
-# ── QR generation ──────────────────────────────────────────────────────────────
+# ── QR generation ─────────────────────────────────────────────────────────────
 
-def make_qr_base64(
-    data, logo_bytes=None, size=10, border=2,
-    fill_color="#000000", back_color="#ffffff", logo_ratio=0.28
-) -> str:
+def make_qr_base64(data, logo_bytes=None, size=10, border=2,
+                   fill_color="#000000", back_color="#ffffff", logo_ratio=0.28):
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_H,
@@ -329,39 +315,40 @@ def make_qr_base64(
 
     if logo_bytes:
         try:
-            logo = Image.open(io.BytesIO(logo_bytes))
-            # [L-01] Verify pixel count after open (before convert, catches bombs)
-            logo.verify()
+            probe = Image.open(io.BytesIO(logo_bytes))
+            probe.verify()  # Detecta decompression bombs antes de cargar completo
             logo = Image.open(io.BytesIO(logo_bytes)).convert("RGBA")
             mp = int(qw * _clamp(logo_ratio, 0.10, 0.42))
             logo.thumbnail((mp, mp), Image.LANCZOS)
             lw, lh = logo.size
             pad = max(4, int(min(lw, lh) * 0.08))
-            bg = Image.new("RGBA", (lw + 2 * pad, lh + 2 * pad), (255, 255, 255, 255))
+            bg = Image.new("RGBA", (lw + 2*pad, lh + 2*pad), (255, 255, 255, 255))
             bg.paste(logo, (pad, pad), logo)
             img.paste(bg, ((qw - bg.width) // 2, (qh - bg.height) // 2), bg)
-        except (UnidentifiedImageError, Image.DecompressionBombError) as e:
-            _log("warning", "Logo rejected (bomb/invalid): %s", e)
-        except Exception as e:
-            _log("warning", "Logo skip: %s", e)
+        except (UnidentifiedImageError, Image.DecompressionBombError) as exc:
+            _log("warning", "Logo rechazado (bomb/inválido): %s", exc)
+        except Exception as exc:
+            _log("warning", "Logo ignorado: %s", exc)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode()
 
 
-# ── Security headers ───────────────────────────────────────────────────────────
+# ── Security headers ──────────────────────────────────────────────────────────
 
 @app.after_request
 def sec_headers(resp: Response) -> Response:
     resp.headers.update({
-        "X-Content-Type-Options":    "nosniff",
-        "X-Frame-Options":           "DENY",
-        "X-XSS-Protection":          "1; mode=block",
-        "Referrer-Policy":           "strict-origin-when-cross-origin",
-        "Permissions-Policy":        "camera=(), microphone=(), geolocation=()",
-        "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
-        # [M-04] unsafe-inline removed — JS/CSS now served as external files
+        "X-Content-Type-Options":       "nosniff",
+        "X-Frame-Options":              "DENY",
+        "X-XSS-Protection":             "1; mode=block",
+        "Referrer-Policy":              "strict-origin-when-cross-origin",
+        "Permissions-Policy":           "camera=(), microphone=(), geolocation=()",
+        "Strict-Transport-Security":    "max-age=63072000; includeSubDomains; preload",
+        "Cross-Origin-Opener-Policy":   "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "X-Request-ID":                 getattr(g, "request_id", "-"),
         "Content-Security-Policy": (
             "default-src 'self'; "
             "script-src 'self'; "
@@ -373,35 +360,34 @@ def sec_headers(resp: Response) -> Response:
         ),
     })
     resp.headers.pop("Server", None)
-    resp.headers.pop("Access-Control-Allow-Origin", None)
+    resp.headers.pop("X-Powered-By", None)
     return resp
 
 
-# ── Routes ─────────────────────────────────────────────────────────────────────
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
     return send_from_directory(PUBLIC_DIR, "index.html")
 
-
 @app.route("/favicon.svg")
 def favicon():
     return send_from_directory(PUBLIC_DIR, "favicon.svg")
-
 
 @app.route("/app.css")
 def app_css():
     return send_from_directory(PUBLIC_DIR, "app.css", mimetype="text/css")
 
-
 @app.route("/app.js")
-def app_js():
+def app_js_route():
     return send_from_directory(PUBLIC_DIR, "app.js", mimetype="application/javascript")
 
 
 @app.route("/api/generate-qr", methods=["POST"])
-@limiter.limit("20 per minute; 100 per hour")
 def api_generate_qr():
+    if _is_rate_limited("generate-qr"):
+        return _rate_resp()
+
     data = (request.form.get("data") or "").strip()
     if not data:
         return jsonify({"error": "El campo 'data' es obligatorio."}), 400
@@ -409,8 +395,8 @@ def api_generate_qr():
         return jsonify({"error": f"Máximo {MAX_DATA_LEN} caracteres."}), 400
 
     try:
-        size       = _clamp(int(request.form.get("size",   10)), 4, 25)
-        border     = _clamp(int(request.form.get("border",  2)), 0,  8)
+        size       = _clamp(int(request.form.get("size",        10)), 4, 25)
+        border     = _clamp(int(request.form.get("border",       2)), 0,  8)
         logo_ratio = _clamp(float(request.form.get("logo_ratio", 0.28)), 0.10, 0.42)
         fill_color = (request.form.get("fill_color") or "#000000").strip()
         back_color = (request.form.get("back_color") or "#ffffff").strip()
@@ -430,15 +416,24 @@ def api_generate_qr():
 
     try:
         qr_b64 = make_qr_base64(data, logo_bytes, size, border, fill_color, back_color, logo_ratio)
+        _log("info", "QR generado | len=%d logo=%s", len(data), logo_bytes is not None)
         return jsonify({"qr": qr_b64})
-    except Exception:
-        _log("error", "QR generation failed")
+    except Exception as exc:
+        _log("error", "Error generando QR: %s", exc)
         return jsonify({"error": "Error generando QR."}), 500
 
 
 @app.route("/api/shorten-url", methods=["POST"])
-@limiter.limit("10 per minute; 50 per hour")
 def api_shorten_url():
+    if _is_rate_limited("shorten-url"):
+        return _rate_resp()
+
+    if not request.is_json:
+        return jsonify({"error": "Content-Type debe ser application/json."}), 415
+
+    if len(request.get_data(cache=True)) > MAX_JSON_BYTES:
+        return jsonify({"error": "Payload demasiado grande."}), 413
+
     body = request.get_json(silent=True) or {}
     url  = (body.get("url") or "").strip()
 
@@ -453,7 +448,6 @@ def api_shorten_url():
     if not safe:
         return jsonify({"error": reason}), 400
 
-    # [M-03] DNS rebinding check on the original URL before any outbound request
     if not _is_host_safe_after_resolution(url):
         return jsonify({"error": "Host no permitido."}), 400
 
@@ -463,59 +457,57 @@ def api_shorten_url():
         safe2, _ = _is_safe_url(resolved)
         if safe2:
             url_to_shorten = resolved
-            _log("info", "Using resolved URL: %s", url_to_shorten)
 
     short = _shorten_with_fallback(url_to_shorten)
     if short is None:
-        return jsonify({"error": "No se pudo acortar la URL. Intenta de nuevo."}), 500
+        return jsonify({"error": "No se pudo acortar la URL. Intenta de nuevo."}), 502
 
     item = {"short_url": short, "original_url": url, "ts": int(time.time() * 1000)}
     kv_push(item)
+    _log("info", "URL acortada: %s", short)
     return jsonify({**item, "kv": KV_AVAILABLE})
 
 
-# ── History ────────────────────────────────────────────────────────────────────
-# GET  — public (no user auth in Phase 1; Phase 2 will filter by user_id)
-# DELETE — protected by HMAC token to prevent accidental/malicious wipes
-
 @app.route("/api/history", methods=["GET"])
-@limiter.limit("30 per minute")
 def api_history():
+    if _is_rate_limited("history-get"):
+        return _rate_resp()
     return jsonify({"history": kv_get_all(), "kv_available": KV_AVAILABLE})
 
 
 @app.route("/api/history", methods=["DELETE"])
-@limiter.limit("5 per minute")
 def api_clear_history():
+    if _is_rate_limited("history-del"):
+        return _rate_resp()
     if not _verify_token(request):
+        _log("warning", "DELETE /api/history — token inválido desde %s", _get_ip()[:12])
         return jsonify({"error": "No autorizado."}), 401
     if not KV_AVAILABLE:
         return jsonify({"error": "KV no disponible."}), 503
     try:
         _kv.delete(KV_KEY)
+        _log("info", "Historial limpiado.")
         return jsonify({"ok": True})
-    except Exception:
+    except Exception as exc:
+        _log("error", "Error limpiando historial: %s", exc)
         return jsonify({"error": "No se pudo limpiar."}), 500
 
 
-# ── Error handlers ─────────────────────────────────────────────────────────────
+@app.route("/api/health", methods=["GET"])
+def api_health():
+    return jsonify({"status": "ok", "kv": KV_AVAILABLE, "version": "2.2"}), 200
 
-@app.errorhandler(429)
-def rate_limit_exceeded(_):
-    return jsonify({"error": "Demasiadas solicitudes. Intenta más tarde."}), 429
 
+# ── Error handlers ────────────────────────────────────────────────────────────
+@app.errorhandler(400)
+def bad_request(_):        return jsonify({"error": "Solicitud inválida."}),        400
 @app.errorhandler(404)
-def not_found(_):
-    return jsonify({"error": "Ruta no encontrada."}), 404
-
+def not_found(_):          return jsonify({"error": "Ruta no encontrada."}),        404
 @app.errorhandler(405)
-def method_not_allowed(_):
-    return jsonify({"error": "Método no permitido."}), 405
-
+def method_not_allowed(_): return jsonify({"error": "Método no permitido."}),       405
 @app.errorhandler(413)
-def payload_too_large(_):
-    return jsonify({"error": "Payload demasiado grande (máx. 4 MB)."}), 413
-
+def too_large(_):          return jsonify({"error": "Payload demasiado grande."}),  413
+@app.errorhandler(429)
+def too_many(_):           return jsonify({"error": "Demasiadas solicitudes."}),    429
 @app.errorhandler(500)
-def internal_error(_):
-    return jsonify({"error": "Error interno."}), 500
+def internal_error(_):     return jsonify({"error": "Error interno."}),             500
