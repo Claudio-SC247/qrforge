@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <meta name="description" content="Qrea-fy — Genera códigos QR personalizados y acorta URLs al instante."/>
   <meta name="theme-color" id="theme-color-meta" content="#060610"/>
-  <title>Qrea-fy — Genera & Acorta</title>
+  <title>Qrea-fy — Genera &amp; Acorta</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
   <link rel="apple-touch-icon" href="/favicon.svg"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;500;700;900&display=swap" rel="stylesheet"/>
-    <link rel="stylesheet" href="/app.css"/>
+  <link rel="stylesheet" href="/app.css"/>
 </head>
 <body>
 
@@ -38,29 +38,26 @@
     </svg>
     <span><span class="logo-q">Qrea</span><span class="logo-dash">-</span><span class="logo-fy">fy</span></span>
   </a>
-
   <div class="header-right">
     <nav class="tabs" role="tablist">
-      <button class="tab on" role="tab" aria-selected="true"  onclick="go('qr',this)">◈ QR</button>
-      <button class="tab"    role="tab" aria-selected="false" onclick="go('url',this)">⇢ URL</button>
+      <button class="tab on" id="tab-qr" role="tab" aria-selected="true">&#x25C8; QR</button>
+      <button class="tab" id="tab-url" role="tab" aria-selected="false">&#x21E2; URL</button>
     </nav>
-    <button class="mode-btn" id="mode-btn" onclick="toggleMode()" aria-label="Cambiar modo claro/oscuro">🌙</button>
+    <button class="mode-btn" id="mode-btn" aria-label="Cambiar modo claro/oscuro">&#x1F319;</button>
   </div>
 </header>
 
 <main>
-
   <div class="hero">
-    <div class="badge">★ Herramienta de productividad</div>
+    <div class="badge">&#x2605; Herramienta de productividad</div>
     <h1>Crea QRs<br><span class="grd">sin límites</span></h1>
     <p>Personaliza colores, inserta tu logo y acorta URLs al instante. Sin registros.</p>
   </div>
 
-  <!-- ══ PANEL QR ════════════════════════════════ -->
+  <!-- PANEL QR -->
   <div id="p-qr" class="panel on" role="tabpanel">
     <div class="g2">
       <div class="col-stack">
-
         <div class="card">
           <div class="card-lbl">Contenido</div>
           <div class="f">
@@ -68,7 +65,6 @@
             <input type="text" id="qr-data" placeholder="https://mi-sitio.com" maxlength="2000" autocomplete="off"/>
           </div>
         </div>
-
         <div class="card">
           <div class="card-lbl">Colores</div>
           <div class="row">
@@ -76,113 +72,101 @@
             <div class="f"><label for="back">Fondo</label><input type="color" id="back" value="#ffffff"/></div>
           </div>
         </div>
-
         <div class="card">
-          <div class="card-lbl">Tamaño & Borde</div>
+          <div class="card-lbl">Tamaño &amp; Borde</div>
           <div class="f">
             <label>Celda — <span id="sv">10</span> px</label>
-            <input type="range" id="sz" min="4" max="22" value="10" oninput="document.getElementById('sv').textContent=this.value"/>
+            <input type="range" id="sz" min="4" max="22" value="10"/>
           </div>
           <div class="f">
             <label>Margen — <span id="bv">2</span> celdas</label>
-            <input type="range" id="bd" min="0" max="8" value="2" oninput="document.getElementById('bv').textContent=this.value"/>
+            <input type="range" id="bd" min="0" max="8" value="2"/>
           </div>
         </div>
-
         <div class="card">
           <div class="card-lbl">Logo central (opcional)</div>
           <div class="drop" id="dz" role="button" aria-label="Subir logo">
-            <input type="file" id="logo-file" accept="image/png,image/jpeg,image/gif,image/webp" onchange="onLogo(this)"/>
-            <span class="drop-ico" aria-hidden="true">🖼</span>
-            <div class="drop-txt"><strong>Arrastra tu imagen</strong> o haz clic<br>PNG · JPG · GIF · WEBP — máx. 3 MB</div>
+            <input type="file" id="logo-file" accept="image/png,image/jpeg,image/gif,image/webp"/>
+            <span class="drop-ico" aria-hidden="true">&#x1F5BC;</span>
+            <div class="drop-txt"><strong>Arrastra tu imagen</strong> o haz clic<br>PNG &middot; JPG &middot; GIF &middot; WEBP &mdash; máx. 3 MB</div>
             <img id="logo-prev" src="" alt="Vista previa del logo"/>
           </div>
-          <div class="f" style="margin-top:.75rem;">
+          <div class="f logo-ratio-wrap">
             <label>Tamaño logo — <span id="rv">28</span>%</label>
-            <input type="range" id="lr" min="10" max="42" value="28" oninput="document.getElementById('rv').textContent=this.value"/>
+            <input type="range" id="lr" min="10" max="42" value="28"/>
           </div>
-          <button class="btn btn-s btn-sm" onclick="clearLogo()" style="margin-top:.45rem;">✕ Quitar logo</button>
+          <button class="btn btn-s btn-sm btn-clear-logo" id="btn-clear-logo">&#x2715; Quitar logo</button>
         </div>
-
-        <button class="btn btn-p" id="btn-gen" onclick="genQR()">
-          <span class="spin" id="sp-qr" aria-hidden="true"></span>◈ Generar QR
+        <button class="btn btn-p" id="btn-gen">
+          <span class="spin" id="sp-qr" aria-hidden="true"></span>&#x25C8; Generar QR
         </button>
         <div class="err" id="qr-err" role="alert"></div>
-        <div class="rate-warn" id="qr-rate">⚠ Límite alcanzado. Espera un momento antes de generar otro QR.</div>
+        <div class="rate-warn" id="qr-rate">&#x26A0; Límite alcanzado. Espera un momento antes de generar otro QR.</div>
       </div>
-
       <div class="card sticky-col">
         <div class="card-lbl">Vista previa</div>
         <div class="qr-area">
           <div class="qr-ph" id="qr-ph" aria-live="polite">
-            <div class="qr-ph-ico" aria-hidden="true">▣</div>Tu QR aparecerá aquí
+            <div class="qr-ph-ico" aria-hidden="true">&#x25A3;</div>Tu QR aparecerá aquí
           </div>
           <img id="qr-img" src="" alt="Código QR generado"/>
         </div>
         <div class="qr-acts" id="qr-acts">
-          <button class="btn btn-p" onclick="dlQR()">⬇ Descargar PNG</button>
-          <button class="btn btn-s" onclick="cpQR()">⎘ Copiar imagen</button>
+          <button class="btn btn-p" id="btn-dl-qr">&#x2B07; Descargar PNG</button>
+          <button class="btn btn-s" id="btn-cp-qr">&#x2398; Copiar imagen</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ══ PANEL URL ═══════════════════════════════ -->
+  <!-- PANEL URL -->
   <div id="p-url" class="panel" role="tabpanel">
     <div class="g2">
-
       <div class="col-stack">
         <div class="card">
           <div class="card-lbl">Acortador de URLs</div>
-
-          <div class="stats-bar" id="stats-bar" style="display:none;">
+          <div class="stats-bar hidden" id="stats-bar">
             <div class="stat-chip">Total: <span id="stat-total">0</span></div>
             <div class="stat-chip">Hoy: <span id="stat-today">0</span></div>
           </div>
-
           <div class="f">
             <label for="long-url">URL larga *</label>
             <div class="url-bar">
               <input type="url" id="long-url" placeholder="https://ejemplo.com/ruta-muy-larga" maxlength="2000" autocomplete="off"/>
-              <button class="btn btn-p btn-sm" id="btn-short" onclick="shortenURL()">
+              <button class="btn btn-p btn-sm" id="btn-short">
                 <span class="spin" id="sp-url" aria-hidden="true"></span>Acortar
               </button>
             </div>
             <div class="err" id="url-err" role="alert"></div>
-            <div class="rate-warn" id="url-rate">⚠ Límite alcanzado. Espera un momento antes de acortar otra URL.</div>
+            <div class="rate-warn" id="url-rate">&#x26A0; Límite alcanzado. Espera un momento antes de acortar otra URL.</div>
           </div>
-
           <div class="res-box" id="url-res" aria-live="polite">
-            <div class="res-lbl">🔗 URL acortada</div>
-            <div class="res-url"  id="r-short"></div>
+            <div class="res-lbl">&#x1F517; URL acortada</div>
+            <div class="res-url" id="r-short"></div>
             <div class="res-lbl">URL original</div>
             <div class="res-orig" id="r-orig"></div>
             <div class="res-btns">
-              <button class="cp-btn" id="cp-main" onclick="cpURL()">⎘ Copiar</button>
-              <button class="cp-btn qr-url-btn" onclick="urlToQR()">◈ Crear QR</button>
+              <button class="cp-btn" id="cp-main">&#x2398; Copiar</button>
+              <button class="cp-btn qr-url-btn" id="btn-url-to-qr">&#x25C8; Crear QR</button>
             </div>
           </div>
         </div>
       </div>
-
       <div class="card">
         <div class="card-lbl">
           Historial
-          <span class="kv-badge kv-off" id="kv-badge">⬤ local</span>
+          <span class="kv-badge kv-off" id="kv-badge">&#x2B24; local</span>
         </div>
         <div class="hist-header">
-          <span style="font-size:.67rem;color:var(--muted);font-family:var(--mono);" id="hist-count"></span>
-          <button class="btn btn-s btn-sm" onclick="clearHistory()">🗑 Limpiar</button>
+          <span class="hist-count-label" id="hist-count"></span>
+          <button class="btn btn-s btn-sm" id="btn-clear-hist">&#x1F5D1; Limpiar</button>
         </div>
         <ul class="hist" id="hist" aria-label="Historial de URLs acortadas">
-          <li id="hist-empty" style="color:var(--muted);font-family:var(--mono);font-size:.73rem;text-align:center;padding:1.5rem 0;">
-            Cargando…
-          </li>
+          <li id="hist-empty" class="hist-empty-msg">Cargando&hellip;</li>
         </ul>
       </div>
     </div>
   </div>
-
 </main>
 
 <div class="toast" id="toast" role="status" aria-live="polite">
@@ -190,6 +174,6 @@
   <span id="t-msg"></span>
 </div>
 
-  <script src="/app.js" defer></script>
+<script src="/app.js" defer></script>
 </body>
 </html>
