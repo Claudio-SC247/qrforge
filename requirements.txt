@@ -3,5 +3,4 @@ qrcode[pil]==8.1
 Pillow==10.4.0
 requests==2.32.3
 upstash-redis==1.0.0
-flask-limiter==3.5.0
 gunicorn==22.0.0
