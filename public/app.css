@@ -337,3 +337,31 @@
       background: rgba(255,255,255,.02);
     }
     .stat-chip span { color: var(--acc2); font-weight: 500; }
+  
+/* ── Fixes for inline styles removed in v2.1 (CSP compliance) ──────────────── */
+
+/* stats-bar: was style="display:none;" — now controlled by JS via .hidden class */
+.hidden { display: none !important; }
+
+/* logo-ratio-wrap: was style="margin-top:.75rem;" */
+.logo-ratio-wrap { margin-top: .75rem; }
+
+/* btn-clear-logo: was style="margin-top:.45rem;" */
+.btn-clear-logo { margin-top: .45rem; }
+
+/* hist-count-label: was style="font-size:.67rem;color:var(--muted);font-family:var(--mono);" */
+.hist-count-label {
+  font-size: .67rem;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+/* hist-empty-msg: was style="color:var(--muted);font-family:var(--mono);..." */
+.hist-empty-msg {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: .73rem;
+  text-align: center;
+  padding: 1.5rem 0;
+  list-style: none;
+}
